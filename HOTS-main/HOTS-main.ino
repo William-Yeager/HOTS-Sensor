@@ -14,18 +14,21 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 const char* ssid = "Apex";  // TW - TODO: Input WiFi credentials
-const char* password = "ThePassword";
+const char* password = "PasswordThe";
+
+// ON INSTALL: ADD IDENTFIER HERE
+const char* identifier = "id2";
 
 //Your Domain name with URL path or IP address with path
 const char* serverNamePOST = "http://192.168.0.212:5000/temperature_post";
-const char* serverNameGET = "https://gd0b1dy894.execute-api.us-east-2.amazonaws.com/beta/preferences";
+const char* serverNameGET = "https://h6clwj7ppl.execute-api.us-east-2.amazonaws.com/dev/settings";
 
 // the following variables are unsigned longs because the time, measured in
 // milliseconds, will quickly become a bigger number than can be stored in an int.
 unsigned long lastTime = 0;
 unsigned long lastTimeSD = 0;
-unsigned long timerDelay = 3600000; // SET TO ONE HOUR
-unsigned long timerDelaySD = 60000; // SET TO ONE SECOND
+unsigned long timerDelay = 3600000;  // SET TO ONE HOUR
+unsigned long timerDelaySD = 60000;  // SET TO ONE SECOND
 
 // JSON buffer
 JsonDocument doc;
@@ -54,7 +57,7 @@ void setup() {
 
   // sets settings
   WiFiClientSecure client;
-  client.setInsecure(); // Not using certificate check while testing
+  client.setInsecure();  // Not using certificate check while testing
 
   HTTPClient https;
   https.useHTTP10(true);
@@ -62,21 +65,31 @@ void setup() {
   if (https.begin(client, serverNameGET)) {  // HTTPS
     Serial.println("Sending GET request...");
     https.addHeader("X-device", "12345678");
-    int httpCode=https.GET();
-    Serial.printf("Response code: %u\n",httpCode);
-    Serial.printf("Content length: %u\n",https.getSize());
+    int httpCode = https.GET();
+    Serial.printf("Response code: %u\n", httpCode);
+    Serial.printf("Content length: %u\n", https.getSize());
     Serial.println("HTTP response:");
     //Serial.println(https.getString());
     String json = https.getString();
+    Serial.println(json);
+
+    DeserializationError error = deserializeJson(doc, json);
 
     // Parse JSON
-    deserializeJson(doc, json);
-    Serial.println(json);
-    prefTemp = doc["body"]["temperature"];
+    const char* bodyJson = doc["body"];
+    if (bodyJson == nullptr) {
+        Serial.println("Retrieval failed");
+        return;
+    }
+    StaticJsonDocument<1024> bodyDoc; 
+    DeserializationError bodyError = deserializeJson(bodyDoc, bodyJson);
+
+    // Access the temperature value
+    prefTemp = bodyDoc[identifier]["temperature"];
     Serial.println(prefTemp);
 
     https.end();
-  }else{
+  } else {
     Serial.println("Could not connect to server");
   }
 
@@ -93,7 +106,7 @@ void setup() {
 
 // Blink function for LED
 void blink(int count) {
-  for(int i = 0; i < count; i++) {
+  for (int i = 0; i < count; i++) {
     digitalWrite(LEDPIN, HIGH);
     delay(50);
     digitalWrite(LEDPIN, LOW);
@@ -153,41 +166,41 @@ void loop() {
   Serial.println("Fahrenheit to string embedded: " + String(f, 2));
 
   // Check if need to alert
-  if(f > prefTemp) {
+  if (f > prefTemp) {
     alert();
-  }  
+  }
 
   // SD log
-  if((millis() - lastTimeSD) > timerDelaySD) {
-      // Read contents
-      myFile = SD.open("/DATA.LOG", FILE_READ);
-      String currFile = myFile.readString();
+  if ((millis() - lastTimeSD) > timerDelaySD) {
+    // Read contents
+    myFile = SD.open("/DATA.LOG", FILE_READ);
+    String currFile = myFile.readString();
+    myFile.close();  // close the file:
+    // Write contents
+    myFile = SD.open("/DATA.LOG", FILE_WRITE);
+    if (myFile) {
+      myFile.print(currFile);
+      myFile.print(millis());
+      myFile.print(F("ms "));
+      myFile.print(F("Humidity: "));
+      myFile.print(h);
+      myFile.print(F("%  Temperature: "));
+      myFile.print(t);
+      myFile.print(F("°C "));
+      myFile.print(f);
+      myFile.print(F("°F  Heat index: "));
+      myFile.print(hic);
+      myFile.print(F("°C "));
+      myFile.print(hif);
+      myFile.println(F("°F"));
       myFile.close();  // close the file:
-      // Write contents
-      myFile = SD.open("/DATA.LOG", FILE_WRITE);
-      if (myFile) {
-        myFile.print(currFile);
-        myFile.print(millis());
-        myFile.print(F("ms "));
-        myFile.print(F("Humidity: "));
-        myFile.print(h);
-        myFile.print(F("%  Temperature: "));
-        myFile.print(t);
-        myFile.print(F("°C "));
-        myFile.print(f);
-        myFile.print(F("°F  Heat index: "));
-        myFile.print(hic);
-        myFile.print(F("°C "));
-        myFile.print(hif);
-        myFile.println(F("°F"));
-        myFile.close();  // close the file:
-        Serial.println("completed SD write");
-      } else {
-        Serial.println("ERROR WITH SD");
-      }
-      lastTimeSD = millis();
-      blink(1);
-}
+      Serial.println("completed SD write");
+    } else {
+      Serial.println("ERROR WITH SD");
+    }
+    lastTimeSD = millis();
+    blink(1);
+  }
 
   /*---ESP32 WiFi / HTTP processes---*/
 
