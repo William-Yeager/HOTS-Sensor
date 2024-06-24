@@ -13,11 +13,12 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
-const char* ssid = "Apex";  // TW - TODO: Input WiFi credentials
-const char* password = "PasswordThe";
-
 // ON INSTALL: ADD IDENTFIER HERE
 const char* identifier = "id2";
+
+// ON INSTALL: WIFI HERE
+const char* ssid = "";  // TW - TODO: Input WiFi credentials
+const char* password = "";
 
 //Your Domain name with URL path or IP address with path
 const char* serverNamePOST = "http://192.168.0.212:5000/temperature_post";
