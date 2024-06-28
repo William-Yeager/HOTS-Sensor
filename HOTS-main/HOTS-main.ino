@@ -6,6 +6,8 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
+// BOARD: ESP32-WROOM-DA Module
+
 #define DHTPIN 15      // Digital Pin connected to DHT sensor
 #define DHTTYPE DHT22  // Currently using DHT 22
 
@@ -14,11 +16,11 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 // ON INSTALL: ADD IDENTFIER HERE
-const char* identifier = "0001";
+const char* identifier = "";
 
 // ON INSTALL: WIFI HERE
-const char* ssid = "Apex";  // TW - TODO: Input WiFi credentials
-const char* password = "PasswordThe";
+const char* ssid = "";
+const char* password = "";
 
 // Addresses for POST and GET servers
 const char* serverNamePOST = "https://fgnbnmlckc.execute-api.us-east-2.amazonaws.com/prod/post-data";
