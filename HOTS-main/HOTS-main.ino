@@ -14,11 +14,11 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 // ON INSTALL: ADD IDENTFIER HERE
-const char* identifier = "";
+const char* identifier = "0001";
 
 // ON INSTALL: WIFI HERE
-const char* ssid = "";  // TW - TODO: Input WiFi credentials
-const char* password = "";
+const char* ssid = "Apex";  // TW - TODO: Input WiFi credentials
+const char* password = "PasswordThe";
 
 // Addresses for POST and GET servers
 const char* serverNamePOST = "https://fgnbnmlckc.execute-api.us-east-2.amazonaws.com/prod/post-data";
