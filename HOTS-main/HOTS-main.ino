@@ -14,22 +14,22 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 // ON INSTALL: ADD IDENTFIER HERE
-const char* identifier = "id2";
+const char* identifier = "";
 
 // ON INSTALL: WIFI HERE
 const char* ssid = "";  // TW - TODO: Input WiFi credentials
 const char* password = "";
 
-//Your Domain name with URL path or IP address with path
-const char* serverNamePOST = "http://192.168.0.212:5000/temperature_post";
-const char* serverNameGET = "https://h6clwj7ppl.execute-api.us-east-2.amazonaws.com/dev/settings";
+// Addresses for POST and GET servers
+const char* serverNamePOST = "https://fgnbnmlckc.execute-api.us-east-2.amazonaws.com/prod/post-data";
+const char* serverNameGET = "https://h6clwj7ppl.execute-api.us-east-2.amazonaws.com/prod/settings";
 
-// the following variables are unsigned longs because the time, measured in
-// milliseconds, will quickly become a bigger number than can be stored in an int.
+// Sets timer vars
 unsigned long lastTime = 0;
-unsigned long lastTimeSD = 0;
-unsigned long timerDelay = 3600000;  // SET TO ONE HOUR
-unsigned long timerDelaySD = 60000;  // SET TO ONE SECOND
+unsigned long timerDelay = 60000;  // SET TO 60 SECONDS
+
+// Set alert var
+bool alertDetected;
 
 // JSON buffer
 JsonDocument doc;
@@ -40,10 +40,16 @@ float prefTemp;
 File myFile;
 
 void setup() {
+  // Begins serial
   Serial.begin(9600);
 
+  // Begins DHT
   dht.begin();
 
+  // Sets vars
+  alertDetected = false;
+
+  // ----Begin WIFI----
   WiFi.begin(ssid, password);
   Serial.println("Connecting");
   while (WiFi.status() != WL_CONNECTED) {
@@ -53,10 +59,9 @@ void setup() {
   Serial.println("");
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
+  // ----END WIFI----
 
-  Serial.println("Timer set to 5 seconds (timerDelay variable), it will take 5 seconds before publishing the first reading.");
-
-  // sets settings
+  // ----Begin GET Request for settings----
   WiFiClientSecure client;
   client.setInsecure();  // Not using certificate check while testing
 
@@ -65,41 +70,44 @@ void setup() {
   Serial.println("https.begin...");
   if (https.begin(client, serverNameGET)) {  // HTTPS
     Serial.println("Sending GET request...");
-    https.addHeader("X-device", "12345678");
+    https.addHeader("ESP32-device", identifier);
+
     int httpCode = https.GET();
+
     Serial.printf("Response code: %u\n", httpCode);
     Serial.printf("Content length: %u\n", https.getSize());
-    Serial.println("HTTP response:");
-    //Serial.println(https.getString());
     String json = https.getString();
-    Serial.println(json);
 
     DeserializationError error = deserializeJson(doc, json);
 
     // Parse JSON
     const char* bodyJson = doc["body"];
     if (bodyJson == nullptr) {
-        Serial.println("Retrieval failed");
-        return;
+      Serial.println("Retrieval failed");
+      return;
     }
-    StaticJsonDocument<1024> bodyDoc; 
+    StaticJsonDocument<1024> bodyDoc;
     DeserializationError bodyError = deserializeJson(bodyDoc, bodyJson);
 
-    // Access the temperature value
+    // Access the preferred temperature value
     prefTemp = bodyDoc[identifier]["temperature"];
+    Serial.print("User Set Preferred Temperature: ");
     Serial.println(prefTemp);
 
+    // Free resource
     https.end();
   } else {
     Serial.println("Could not connect to server");
   }
+  // ----END GET Request for settings----
 
-
+  // ----Begin SD Init----
   if (!SD.begin(5)) {
     Serial.println("SD initialization failed!");
     return;
   }
   Serial.println("SD initialization done.");
+  // ----END SD Init----
 
   // Set LED pin
   pinMode(LEDPIN, OUTPUT);
@@ -115,64 +123,54 @@ void blink(int count) {
   }
 }
 
-// Alert function
-void alert() {
-  //***************
-  // SMS CODE HERE
-  //***************
-  digitalWrite(LEDPIN, HIGH);
-  delay(1000);
-  digitalWrite(LEDPIN, LOW);
-  Serial.println("ALERT");
-}
-
 void loop() {
-  /*---DHT11 sensor processes---*/
-
-  // Take measurements & send every 3 seconds
-  delay(1000);
-
-  // Read humidity
-  float h = dht.readHumidity();
-  // Read Temperature
-  float t = dht.readTemperature();
-  // Read Temperature as Fahrenheit
-  float f = dht.readTemperature(true);
-
-  // Check for failures
-  if (isnan(h) || isnan(t) || isnan(f)) {
-    Serial.println(F("DHT FAILURE TO MEASURE"));
-    blink(100000000);
-    return;
+  // Check if needs to alert while waiting to read temp again
+  if(alertDetected) {
+    blink(5);
   }
 
-  // Compute heat index in Fahrenheit (the default)
-  float hif = dht.computeHeatIndex(f, h);
-  // Compute heat index in Celsius (isFahreheit = false)
-  float hic = dht.computeHeatIndex(t, h, false);
+  // Check once a minute
+  if ((millis() - lastTime) > timerDelay) {
+    // Read humidity
+    float h = dht.readHumidity();
+    // Read Temperature
+    float t = dht.readTemperature();
+    // Read Temperature as Fahrenheit
+    float f = dht.readTemperature(true);
 
-  Serial.print(F("Humidity: "));
-  Serial.print(h);
-  Serial.print(F("%  Temperature: "));
-  Serial.print(t);
-  Serial.print(F("°C "));
-  Serial.print(f);
-  Serial.print(F("°F  Heat index: "));
-  Serial.print(hic);
-  Serial.print(F("°C "));
-  Serial.print(hif);
-  Serial.println(F("°F"));
+    // Check for failures
+    if (isnan(h) || isnan(t) || isnan(f)) {
+      Serial.println(F("DHT FAILURE TO MEASURE"));
+      blink(1000000000000);
+      return;
+    }
 
-  // TW - testing String convert
-  Serial.println("Fahrenheit to string embedded: " + String(f, 2));
+    // Compute heat index in Fahrenheit (the default)
+    float hif = dht.computeHeatIndex(f, h);
+    // Compute heat index in Celsius (isFahreheit = false)
+    float hic = dht.computeHeatIndex(t, h, false);
 
-  // Check if need to alert
-  if (f > prefTemp) {
-    alert();
-  }
+    Serial.print(F("Humidity: "));
+    Serial.print(h);
+    Serial.print(F("%  Temperature: "));
+    Serial.print(t);
+    Serial.print(F("°C "));
+    Serial.print(f);
+    Serial.print(F("°F  Heat index: "));
+    Serial.print(hic);
+    Serial.print(F("°C "));
+    Serial.print(hif);
+    Serial.println(F("°F"));
 
-  // SD log
-  if ((millis() - lastTimeSD) > timerDelaySD) {
+    // Check if need to alert
+    if (f > prefTemp) {
+      alertDetected = true;
+      Serial.println("ALERT");
+    } else {
+      alertDetected = false;
+    }
+
+    // -----Log to Local Storage------
     // Read contents
     myFile = SD.open("/DATA.LOG", FILE_READ);
     String currFile = myFile.readString();
@@ -199,49 +197,47 @@ void loop() {
     } else {
       Serial.println("ERROR WITH SD");
     }
-    lastTimeSD = millis();
-    blink(1);
-  }
-
-  /*---ESP32 WiFi / HTTP processes---*/
-
-  //Send an HTTP POST request full of data from the sd card every hour.
-  if ((millis() - lastTime) > timerDelay) {
-    //Check WiFi connection status
-    if (WiFi.status() == WL_CONNECTED) {
-      WiFiClient client;
-      HTTPClient http;
-
-      // Your Domain name with URL path or IP address with path
-      http.begin(client, serverNamePOST);
-
-      // If you need Node-RED/server authentication, insert user and password below
-      //http.setAuthorization("REPLACE_WITH_SERVER_USERNAME", "REPLACE_WITH_SERVER_PASSWORD");
-
-      // Specify content-type header
-      http.addHeader("Content-Type", "application/json");
-
-      // Only POST if Temperature is above danger threshold
-      if (f > prefTemp) {
-        // Data to send with HTTP POST
-        //String httpRequestData = "{\"Temperature\":\"String(f, 2)\"}";
-        String httpRequestData = "{\"Temperature\":";
-        httpRequestData = httpRequestData += String(f, 2) + "}";
-        Serial.print(httpRequestData);
-        // Send HTTP POST request
-        int httpResponseCode = http.POST(httpRequestData);
-
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-      }
-
-      // Free resources
-      http.end();
-
-    } else {
-      Serial.println("WiFi Disconnected");
-    }
     lastTime = millis();
-    blink(5);
+    // -----END Log to Local Storage------
+
+    // -----Log to Database------
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    // Concat post string
+    String postStr = "{\"id\":\"";
+    postStr += identifier;
+    postStr += "\",\"tfi\":\"";
+    postStr += String(millis());
+    postStr += "\",\"temperature\":\"";
+    postStr += String(f, 2);
+    postStr += "\",\"humidity\":\"";
+    postStr += h;
+    postStr += "\",\"alert\":\"";
+    postStr += alertDetected;
+    postStr += "\"}";
+
+    // Begin Client Send
+    HTTPClient https;
+    https.useHTTP10(true);
+    if (https.begin(client, serverNamePOST)) {  // HTTPS
+      Serial.println("Sending POST request...");
+      https.addHeader("Content-Type", "application/json");
+      int httpResponseCode = https.POST(postStr);
+      Serial.print("POST Response code: ");
+      Serial.println(httpResponseCode);
+      Serial.print("JSON sent: ");
+      Serial.println(postStr);
+
+      // Free resource
+      https.end();
+    } else {
+      // If it can't connect
+      Serial.println("Error with POST: Could not connect");
+    }
+    // -----END Log to Database------
+
+    // Blink to LED to confirm
+    blink(1);
   }
 }
